@@ -59,7 +59,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.http.auth.AuthSchemeProvider;
 import org.apache.http.client.CredentialsProvider;
 import org.apache.http.config.Lookup;
@@ -101,6 +100,8 @@ import org.apache.solr.common.util.ExecutorUtil;
 import org.apache.solr.common.util.IOUtils;
 import org.apache.solr.common.util.ObjectCache;
 import org.apache.solr.common.util.SolrNamedThreadFactory;
+import org.apache.solr.common.util.StrUtils;
+import org.apache.solr.common.util.SuppressForbidden;
 import org.apache.solr.common.util.Utils;
 import org.apache.solr.core.DirectoryFactory.DirContext;
 import org.apache.solr.core.backup.repository.BackupRepository;
@@ -108,7 +109,6 @@ import org.apache.solr.core.backup.repository.BackupRepositoryFactory;
 import org.apache.solr.filestore.PackageStoreAPI;
 import org.apache.solr.handler.ClusterAPI;
 import org.apache.solr.handler.CollectionBackupsAPI;
-import org.apache.solr.handler.CollectionsAPI;
 import org.apache.solr.handler.RequestHandlerBase;
 import org.apache.solr.handler.SnapShooter;
 import org.apache.solr.handler.admin.CollectionsHandler;
@@ -742,10 +742,15 @@ public class CoreContainer {
   // -------------------------------------------------------------------
 
   /** Load the cores defined for this CoreContainer */
+  @SuppressForbidden(
+      reason =
+          "Set the thread contextClassLoader for all 3rd party dependencies that we cannot control")
   public void load() {
     if (log.isDebugEnabled()) {
       log.debug("Loading cores into CoreContainer [instanceDir={}]", getSolrHome());
     }
+    // Set the thread's contextClassLoader for any plugins that are loaded via Modules or Packages
+    Thread.currentThread().setContextClassLoader(loader.getClassLoader());
 
     logging = LogWatcher.newRegisteredLogWatcher(cfg.getLogWatcherConfig(), loader);
 
@@ -837,9 +842,6 @@ public class CoreContainer {
     collectionsHandler =
         createHandler(
             COLLECTIONS_HANDLER_PATH, cfg.getCollectionsHandlerClass(), CollectionsHandler.class);
-    final CollectionsAPI collectionsAPI = new CollectionsAPI(collectionsHandler);
-    registerV2ApiIfEnabled(collectionsAPI);
-    registerV2ApiIfEnabled(collectionsAPI.collectionsCommands);
     final CollectionBackupsAPI collectionBackupsAPI = new CollectionBackupsAPI(collectionsHandler);
     registerV2ApiIfEnabled(collectionBackupsAPI);
     configSetsHandler =
@@ -1165,7 +1167,7 @@ public class CoreContainer {
     }
 
     if (authenticationPlugin != null
-        && StringUtils.isEmpty(System.getProperty("solr.jetty.https.port"))) {
+        && StrUtils.isNullOrEmpty(System.getProperty("solr.jetty.https.port"))) {
       log.warn(
           "Solr authentication is enabled, but SSL is off.  Consider enabling SSL to protect user credentials and data with encryption.");
     }
